@@ -24,8 +24,12 @@ SECTIONS
         *(.rodata .rodata.*)
         *(.srodata .srodata.*)
         *(.sdata2 .sdata2.*)
-        . = ALIGN(4K);
-        _erodata = .;
+        . = ALIGN(4K);    
+		_sserver = .;
+		*(.server)
+		. = ALIGN(4k);
+		_eserver = .;
+		_erodata = .;
     }
 
     .data : ALIGN(4K) {

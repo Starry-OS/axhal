@@ -34,7 +34,7 @@
 #[macro_use]
 extern crate log;
 
-#[cfg(feature = "monolithic")]
+#[cfg(any(feature = "monolithic" , feature = "microkernel"))]
 /// The kernel process ID, which is always 1.
 pub const KERNEL_PROCESS_ID: u64 = 1;
 

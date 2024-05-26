@@ -17,6 +17,7 @@ paging = ["axalloc", "page_table"]
 irq = []
 tls = ["alloc"]
 monolithic = ["paging", "dep:axfs_ramfs"]
+microkernel = ["paging"]
 default = []
 
 [dependencies]

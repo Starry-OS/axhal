@@ -13,7 +13,7 @@ cfg_if::cfg_if! {
     }
 }
 
-#[cfg(feature = "monolithic")]
+#[cfg(any(feature = "monolithic",feature = "microkernel"))]
 /// To write the trap frame into the kernel stack
 ///
 /// # Safety
@@ -27,7 +27,7 @@ pub fn write_trapframe_to_kstack(kstack_top: usize, trap_frame: &TrapFrame) {
     }
 }
 
-#[cfg(feature = "monolithic")]
+#[cfg(any(feature = "monolithic",feature = "microkernel"))]
 /// To read the trap frame from the kernel stack
 ///
 /// # Safety
