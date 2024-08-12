@@ -38,8 +38,6 @@ pub fn platform_init() {
     #[cfg(feature = "irq")]
     crate::platform::irq::init_primary();
     crate::platform::time::init_percpu();
-    #[cfg(feature = "irq")]
-    crate::platform::console::init_irq();
 }
 
 /// Initializes the platform devices for secondary CPUs.

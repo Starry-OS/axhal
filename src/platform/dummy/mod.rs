@@ -66,6 +66,9 @@ pub mod irq {
     /// The timer IRQ number.
     pub const TIMER_IRQ_NUM: usize = 0;
 
+    /// The Uart IRQ numbe
+    pub const UART_IRQ_NUM: usize = usize::MAX;
+
     /// Enables or disables the given IRQ.
     pub fn set_enable(irq_num: usize, enabled: bool) {}
 
