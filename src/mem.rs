@@ -129,8 +129,9 @@ pub(crate) fn default_mmio_regions() -> impl Iterator<Item = MemRegion> {
 /// Returns the default free memory regions (kernel image end to physical memory end).
 #[allow(dead_code)]
 pub(crate) fn default_free_regions() -> impl Iterator<Item = MemRegion> {
-    let start = virt_to_phys((_ekernel as usize).into()).align_up_4k();
-    let end = PhysAddr::from(axconfig::PHYS_MEMORY_END).align_down_4k();
+    // Specially for DH11 x86_64 board, the free memory starts from 0x1_0000_0000
+    let start = virt_to_phys((0xffff_ff81_0000_0000).into()).align_up_4k();
+    let end = PhysAddr::from(0x1_8000_0000).align_down_4k();
     core::iter::once(MemRegion {
         paddr: start,
         size: end.as_usize() - start.as_usize(),
