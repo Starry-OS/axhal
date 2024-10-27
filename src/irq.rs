@@ -1,6 +1,4 @@
 //! Interrupt management.
-#![feature(unsized_fn_params)]
-
 
 use handler_table::HandlerTable;
 
