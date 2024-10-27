@@ -1,4 +1,7 @@
-#[cfg(not(platform_family = "aarch64-raspi"))]
+#[cfg(not(any(
+    all(platform_family = "aarch64-raspi"),
+    all(platform_family = "aarch64-phytiumpi"),
+)))]
 pub mod psci;
 
 cfg_if::cfg_if! {
@@ -21,7 +24,7 @@ cfg_if::cfg_if! {
         pub mod console {
             pub use super::dw_apb_uart::*;
         }
-    } else if #[cfg(any(platform_family = "aarch64-raspi", platform_family = "aarch64-qemu-virt"))] {
+    } else if #[cfg(any(platform_family = "aarch64-raspi", platform_family = "aarch64-qemu-virt",platform_family = "aarch64-phytiumpi"))] {
         mod pl011;
         pub mod console {
             pub use super::pl011::*;
@@ -52,5 +55,5 @@ pub fn platform_init_secondary() {
 
 /// Returns the name of the platform.
 pub fn platform_name() -> &'static str {
-    of::machin_name()
+    of::machin_name().unwrap_or(axconfig::PLATFORM)
 }

@@ -9,28 +9,21 @@ use page_table_entry::{GenericPTE, MappingFlags};
 use either::{Either, Left, Right};
 
 /// Returns platform-specific memory regions.
-pub(crate) fn platform_regions() -> impl Iterator<Item = MemRegion> {
+pub(crate) fn platform_regions(traverser:&crate::mem::MemTraverser) {
     // Feature, should registerd by user, should'n use hard coding
-    let iterator: Either<_, _> = if of::machin_name().contains("raspi") {
-        Left(
-            core::iter::once(MemRegion {
+    if of::machin_name().is_some_and(|name| name.contains("raspi") || name.contains("phytiumpi")) {
+            traverser.accept_one(&MemRegion {
                 paddr: 0x0.into(),
                 size: 0x1000,
                 flags: MemRegionFlags::RESERVED | MemRegionFlags::READ | MemRegionFlags::WRITE,
                 name: "spintable",
-            })
-            .chain(core::iter::once(fdt_region()))
-            .chain(free_regions())
-            .chain(crate::mem::default_mmio_regions()),
-        )
-    } else {
-        Right(
-            core::iter::once(fdt_region())
-                .chain(free_regions())
-                .chain(crate::mem::default_mmio_regions()),
-        )
-    };
-    iterator.into_iter()
+            });
+    } 
+    fdt_region().as_ref().inspect(|reg|{traverser.accept_one(reg);});
+
+    traverser
+    .than(&free_regions)
+    .than(&crate::mem::default_mmio_regions);
 }
 
 fn split_region(region: MemRegion, region2: &MemRegion) -> impl Iterator<Item = MemRegion> {
@@ -69,41 +62,56 @@ fn split_region(region: MemRegion, region2: &MemRegion) -> impl Iterator<Item = 
 }
 
 // Free mem regions equal memory minus kernel and fdt region
-fn free_regions() -> impl Iterator<Item = MemRegion> {
-    let all_mem = of::memory_nodes().flat_map(|m| {
-        m.regions().filter_map(|r| {
-            if r.size.unwrap() > 0 {
-                Some(MemRegion {
-                    paddr: PhysAddr::from(r.starting_address as usize).align_up_4k(),
-                    size: r.size.unwrap(),
-                    flags: MemRegionFlags::FREE | MemRegionFlags::READ | MemRegionFlags::WRITE,
-                    name: "free memory",
+fn free_regions(traverser:&crate::mem::MemTraverser) {
+    match of::memory_nodes(){
+        Some(nodes) => {
+            let all_mem = nodes.flat_map(|m| {
+                m.regions().filter_map(|r| {
+                    if r.size.unwrap() > 0 {
+                        Some(MemRegion {
+                            paddr: PhysAddr::from(r.starting_address as usize).align_up_4k(),
+                            size: r.size.unwrap(),
+                            flags: MemRegionFlags::FREE | MemRegionFlags::READ | MemRegionFlags::WRITE,
+                            name: "free memory",
+                        })
+                    } else {
+                        None
+                    }
                 })
-            } else {
-                None
-            }
-        })
-    });
-
-    let hack_k_region = MemRegion {
-        paddr: virt_to_phys((_stext as usize).into()).align_up_4k(),
-        size: _ekernel as usize - _stext as usize,
-        flags: MemRegionFlags::FREE,
-        name: "kernel memory",
-    };
-
-    let filter_kernel_mem = all_mem.flat_map(move |m| split_region(m, &hack_k_region));
-    filter_kernel_mem.flat_map(move |m| split_region(m, &fdt_region()))
+            });
+        
+            let hack_k_region = MemRegion {
+                paddr: virt_to_phys((_stext as usize).into()).align_up_4k(),
+                size: _ekernel as usize - _stext as usize,
+                flags: MemRegionFlags::FREE,
+                name: "kernel memory",
+            };
+        
+            let filter_kernel_mem = all_mem.flat_map(move |m| split_region(m, &hack_k_region));
+            let _ = filter_kernel_mem.flat_map(move |m| split_region(m, fdt_region().as_ref().unwrap())).try_for_each(|reg|if traverser.accept_one(&reg){
+                Ok(())
+            }else{
+             Err(())   
+            });
+        },
+        None=>{
+            traverser.than(&crate::mem::default_free_regions);
+        }
+    }
 }
 
 const FDT_FIX_SIZE: usize = 0x10_0000; //1M
-fn fdt_region() -> MemRegion {
-    let fdt_ptr = of::get_fdt_ptr();
-    MemRegion {
-        paddr: virt_to_phys((fdt_ptr.unwrap() as usize).into()).align_up_4k(),
-        size: FDT_FIX_SIZE,
-        flags: MemRegionFlags::RESERVED | MemRegionFlags::READ,
-        name: "fdt reserved",
+fn fdt_region() -> Option<MemRegion> {
+    if of::fdt_available(){
+        let fdt_ptr = of::get_fdt_ptr();
+        Some(MemRegion {
+            paddr: virt_to_phys((fdt_ptr.unwrap() as usize).into()).align_up_4k(),
+            size: FDT_FIX_SIZE,
+            flags: MemRegionFlags::RESERVED | MemRegionFlags::READ,
+            name: "fdt reserved",
+        })
+    }else{
+        None
     }
 }
 
@@ -145,9 +153,40 @@ pub unsafe fn init_mmu() {
     // Flush the entire TLB
     crate::arch::flush_tlb(None);
 
+    put_debug();
+
     // Enable the MMU and turn on I-cache and D-cache
     SCTLR_EL1.modify(SCTLR_EL1::M::Enable + SCTLR_EL1::C::Cacheable + SCTLR_EL1::I::Cacheable);
     barrier::isb(barrier::SY);
+
+
+    put_debug_paged();
+}
+
+
+#[cfg(all(target_arch = "aarch64"))]
+unsafe fn put_debug() {
+    use core::ptr;
+
+    #[cfg(platform_family = "aarch64-phytiumpi")]
+    {
+        let state = (0x2800D018 as usize) as *mut u8;
+        let put = (0x2800D000 as usize) as *mut u8;
+        while (ptr::read_volatile(state) & (0x20 as u8)) != 0 {}
+        *put = b'a';
+    }
+}
+
+#[cfg(all(target_arch = "aarch64"))]
+unsafe  fn put_debug_paged() {
+    use core::ptr;
+    #[cfg(platform_family = "aarch64-phytiumpi")]
+    {
+        let state = (0xFFFF00002800D018 as usize) as *mut u8;
+        let put = (0xFFFF00002800D000 as usize) as *mut u8;
+        while (ptr::read_volatile(state) & (0x20 as u8)) != 0 {}
+        *put = b'p';
+    }
 }
 
 const BOOT_MAP_SHIFT: usize = 30; // 1GB
@@ -170,6 +209,32 @@ pub unsafe fn idmap_kernel(kernel_phys_addr: usize) {
         MappingFlags::READ | MappingFlags::WRITE | MappingFlags::EXECUTE,
         true,
     );
+
+//==============================
+
+    BOOT_PT_L1[0] = A64PTE::new_page(
+        PhysAddr::from(0),
+        MappingFlags::READ | MappingFlags::WRITE | MappingFlags::DEVICE,
+        true,
+    );
+    // // 0x0000_4000_0000..0x0000_8000_0000, 1G block, normal memory
+    // boot_pt_l1[1] = A64PTE::new_page(
+    //     PhysAddr::from(0x4000_0000),
+    //     MappingFlags::READ | MappingFlags::WRITE | MappingFlags::EXECUTE,
+    //     true,
+    // );
+    // 0x0000_8000_0000..0x0000_C000_0000, 2G block, normal memory
+    BOOT_PT_L1[2] = A64PTE::new_page(
+        PhysAddr::from(0x8000_0000),
+        MappingFlags::READ | MappingFlags::WRITE | MappingFlags::EXECUTE,
+        true,
+    );
+    // 0x0000_C000_0000..0x0001_0000_0000, 1G block, DEVICE memory
+    // boot_pt_l1[3] = A64PTE::new_page(
+    //     PhysAddr::from(0xc000_0000),
+    //     MappingFlags::READ | MappingFlags::WRITE | MappingFlags::DEVICE,
+    //     true,
+    // );
 }
 
 /// Map a device with the given physical address to the page table.
