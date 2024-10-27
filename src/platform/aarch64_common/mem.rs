@@ -153,40 +153,10 @@ pub unsafe fn init_mmu() {
     // Flush the entire TLB
     crate::arch::flush_tlb(None);
 
-    put_debug();
-
     // Enable the MMU and turn on I-cache and D-cache
     SCTLR_EL1.modify(SCTLR_EL1::M::Enable + SCTLR_EL1::C::Cacheable + SCTLR_EL1::I::Cacheable);
     barrier::isb(barrier::SY);
 
-
-    put_debug_paged();
-}
-
-
-#[cfg(all(target_arch = "aarch64"))]
-unsafe fn put_debug() {
-    use core::ptr;
-
-    #[cfg(platform_family = "aarch64-phytiumpi")]
-    {
-        let state = (0x2800D018 as usize) as *mut u8;
-        let put = (0x2800D000 as usize) as *mut u8;
-        while (ptr::read_volatile(state) & (0x20 as u8)) != 0 {}
-        *put = b'a';
-    }
-}
-
-#[cfg(all(target_arch = "aarch64"))]
-unsafe  fn put_debug_paged() {
-    use core::ptr;
-    #[cfg(platform_family = "aarch64-phytiumpi")]
-    {
-        let state = (0xFFFF00002800D018 as usize) as *mut u8;
-        let put = (0xFFFF00002800D000 as usize) as *mut u8;
-        while (ptr::read_volatile(state) & (0x20 as u8)) != 0 {}
-        *put = b'p';
-    }
 }
 
 const BOOT_MAP_SHIFT: usize = 30; // 1GB
@@ -212,29 +182,19 @@ pub unsafe fn idmap_kernel(kernel_phys_addr: usize) {
 
 //==============================
 
-    BOOT_PT_L1[0] = A64PTE::new_page(
-        PhysAddr::from(0),
-        MappingFlags::READ | MappingFlags::WRITE | MappingFlags::DEVICE,
-        true,
-    );
-    // // 0x0000_4000_0000..0x0000_8000_0000, 1G block, normal memory
-    // boot_pt_l1[1] = A64PTE::new_page(
-    //     PhysAddr::from(0x4000_0000),
-    //     MappingFlags::READ | MappingFlags::WRITE | MappingFlags::EXECUTE,
-    //     true,
-    // );
-    // 0x0000_8000_0000..0x0000_C000_0000, 2G block, normal memory
-    BOOT_PT_L1[2] = A64PTE::new_page(
-        PhysAddr::from(0x8000_0000),
-        MappingFlags::READ | MappingFlags::WRITE | MappingFlags::EXECUTE,
-        true,
-    );
-    // 0x0000_C000_0000..0x0001_0000_0000, 1G block, DEVICE memory
-    // boot_pt_l1[3] = A64PTE::new_page(
-    //     PhysAddr::from(0xc000_0000),
-    //     MappingFlags::READ | MappingFlags::WRITE | MappingFlags::DEVICE,
-    //     true,
-    // );
+    #[cfg(platform_family = "aarch64-phytiumpi")] // phytiumpi use .bin to boot, so it make some different than other platform, just leave this patch for now, might be modified in future
+    {
+        BOOT_PT_L1[0] = A64PTE::new_page(
+            PhysAddr::from(0),
+            MappingFlags::READ | MappingFlags::WRITE | MappingFlags::DEVICE,
+            true,
+        );
+        BOOT_PT_L1[2] = A64PTE::new_page(
+                PhysAddr::from(0x8000_0000),
+                MappingFlags::READ | MappingFlags::WRITE | MappingFlags::EXECUTE,
+            true,
+        );
+    }
 }
 
 /// Map a device with the given physical address to the page table.
