@@ -31,23 +31,6 @@ impl fmt::Debug for MemRegionFlags {
     }
 }
 
-pub struct MemTraverser<'a>{
-     pub mapper:&'a dyn Fn(&MemRegion)->bool,
-}
-
-pub type TraverserAccepter = dyn Fn(&MemTraverser);
-
-impl<'a> MemTraverser<'a> {
-    pub fn than(&'a self,accepter:&TraverserAccepter) -> &'a Self {
-        accepter(self);
-        self
-    }
-
-    pub fn accept_one(&'a self,region:&MemRegion)->bool {
-        (self.mapper)(region)
-    }
-}
-
 /// A physical memory region.
 #[derive(Debug)]
 pub struct MemRegion {
@@ -88,13 +71,13 @@ pub const fn phys_to_virt(paddr: PhysAddr) -> VirtAddr {
 }
 
 /// Returns an iterator over all physical memory regions.
-pub fn memory_regions<'a>(traverser:&'a MemTraverser<'a>) -> &'a MemTraverser<'a> {
-    traverser.than(&kernel_image_regions).than(&crate::platform::mem::platform_regions)
+pub fn memory_regions() -> impl Iterator<Item = MemRegion> {
+    kernel_image_regions().chain(crate::platform::mem::platform_regions())
 }
 
 /// Returns the memory regions of the kernel image (code and data sections).
-fn kernel_image_regions(traverser:&MemTraverser) {
-    let _ = [
+fn kernel_image_regions() -> impl Iterator<Item = MemRegion> {
+    [
         MemRegion {
             paddr: virt_to_phys((_stext as usize).into()),
             size: _etext as usize - _stext as usize,
@@ -126,17 +109,13 @@ fn kernel_image_regions(traverser:&MemTraverser) {
             name: ".bss",
         },
     ]
-    .into_iter().try_for_each(|a|{if traverser.accept_one(&a) {
-            Ok(())
-    }else {
-            Err(())
-    }});
+    .into_iter()
 }
 
 /// Returns the default MMIO memory regions (from [`axconfig::MMIO_REGIONS`]).
 #[allow(dead_code)]
-pub(crate) fn default_mmio_regions(traverser:&MemTraverser){
-   let _ = axconfig::MMIO_REGIONS.iter().map(|reg| MemRegion {
+pub(crate) fn default_mmio_regions() -> impl Iterator<Item = MemRegion> {
+    axconfig::MMIO_REGIONS.iter().map(|reg| MemRegion {
         paddr: reg.0.into(),
         size: reg.1,
         flags: MemRegionFlags::RESERVED
@@ -144,26 +123,20 @@ pub(crate) fn default_mmio_regions(traverser:&MemTraverser){
             | MemRegionFlags::READ
             | MemRegionFlags::WRITE,
         name: "mmio",
-    }).try_for_each(|a|{
-        if traverser.accept_one(&a) {
-            Ok(())
-        }else {
-            Err(())
-        }
-    });
+    })
 }
 
 /// Returns the default free memory regions (kernel image end to physical memory end).
 #[allow(dead_code)]
-pub(crate) fn default_free_regions(traverser:&MemTraverser) {
+pub(crate) fn default_free_regions() -> impl Iterator<Item = MemRegion> {
     let start = virt_to_phys((_ekernel as usize).into()).align_up_4k();
     let end = PhysAddr::from(axconfig::PHYS_MEMORY_END).align_down_4k();
-    traverser.accept_one(&MemRegion {
+    core::iter::once(MemRegion {
         paddr: start,
         size: end.as_usize() - start.as_usize(),
         flags: MemRegionFlags::FREE | MemRegionFlags::READ | MemRegionFlags::WRITE,
         name: "free memory",
-    });
+    })
 }
 
 /// Return the extend free memory regions to prepare for the monolithic_userboot

@@ -65,9 +65,9 @@ pub fn init_board_info(dtb: usize) {
     unsafe {
         of::init_fdt_ptr(dtb as *const u8);
     }
-    let mut of_cpus = of::cpus();
+    let of_cpus = of::cpus();
     let freq = {
-        if let Some(cpu) = of_cpus.nth(0) {
+        if let Some(cpu) = of_cpus.expect("Failed to read cpu info").nth(0) {
             cpu.timebase_frequency()
         } else {
             axconfig::TIMER_FREQUENCY

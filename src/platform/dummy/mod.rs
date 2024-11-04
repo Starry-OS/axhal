@@ -30,10 +30,9 @@ pub mod mp {
 }
 
 pub mod mem {
-    use crate::mem::MemTraverser;
-
     /// Returns platform-specific memory regions.
-    pub(crate) fn platform_regions(traverser:&MemTraverser) {
+    pub(crate) fn platform_regions() -> impl Iterator<Item = crate::mem::MemRegion> {
+        core::iter::empty()
     }
 }
 
