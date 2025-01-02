@@ -39,7 +39,7 @@ memory_addr = { git = "https://github.com/Starry-OS/memory_addr.git" }
 handler_table = { git = "https://github.com/Starry-OS/handler_table.git" }
 crate_interface = { git = "https://github.com/Starry-OS/crate_interface.git" }
 axfs_ramfs = { git = "https://github.com/Starry-OS/axfs_ramfs.git", optional = true }
-taskctx = { git = "https://github.com/Starry-OS/taskctx.git" }
+taskctx = { git = "https://github.com/Josen-B/taskctx.git" }
 of = { git = "https://github.com/Starry-OS/of.git"}
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
